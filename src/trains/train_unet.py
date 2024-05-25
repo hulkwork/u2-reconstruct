@@ -12,10 +12,11 @@ sys.path.insert(0, "/home/michou/mvtec/u2-reconstruct")
 
 from src.model import UNet
 from datetime import datetime
-
+from glob import glob
 from torch.utils.tensorboard import SummaryWriter
 from torch.nn import MSELoss
-from src.dataset import ReconstructDataset
+from src.dataset import ReconstructDataset, FilesDataset
+from torch.utils.data import ConcatDataset
 from src.losses import SSIM_Loss, CustomLoss
 from src.eval import eval_net
 from torch.utils.data import DataLoader, random_split
@@ -61,8 +62,12 @@ def train_approach(net:UNet, train_loader : DataLoader,
         epoch_loss = 0
         with tqdm(total=n_train, desc=f'Epoch {epoch + 1}/{epochs}', unit='img') as pbar:
             for batch in train_loader:
-                imgs = batch['image']
+                imgs = batch['noisy']
                 true_masks = batch['output']
+                if imgs.shape[1] != net.n_channels:
+                    logging.info(imgs.shape[1])
+                    continue
+
                 assert imgs.shape[1] == net.n_channels, \
                     f'Network has been defined with {net.n_channels} input channels, ' \
                     f'but loaded images have {imgs.shape[1]} channels. Please check that ' \
@@ -114,10 +119,24 @@ def get_args():
     parser.add_argument('-f', '--load', dest='load', type=str, default=False,
                         help='Load model from a .pth file')
     
-    parser.add_argument('-v', '--validation', dest='val', type=float, default=10.0,
-                        help='Percent of the data that is used as validation (0-100)')
+    parser.add_argument('-i', '--item', dest='item', type=str, default=None,
+                        help='Item to train')
 
     return parser.parse_args()
+
+def dataset_creator_good(data_path="/home/michou/mvtec/data/",resized:int=256, normalized : bool = False):
+    all_items = os.listdir(data_path)
+    test_path = "test"
+    train_path = 'train'
+    datasets = dict()
+    for item in all_items:
+        train_data = os.path.join(data_path, item, train_path, 'good')
+        test_data = os.path.join(data_path, item, test_path, 'good')
+        datasets[item] = dict(train=FilesDataset(imgs_files=glob(train_data + "/*.png"),
+        resize=resized, normalized=normalized),
+                              test=FilesDataset(imgs_files=glob(test_data+ "/*.png"), resize=resized, normalized=normalized))
+
+    return datasets
 
 
 if __name__ == '__main__':
@@ -138,17 +157,42 @@ if __name__ == '__main__':
         logging.info(f'Model loaded from {args.load}')
 
     net.to(device=device)
+    datasets = dataset_creator_good()
     batch_size = 1
     val_percent = 0.1
-    dataset = ReconstructDataset(imgs_dir="/home/michou/mvtec/data/pill/train/good/*.png", resize=256, normalized=False)
-    n_val = int(len(dataset) * val_percent)
-    n_train = len(dataset) - n_val
-    train, val = random_split(dataset, [n_train, n_val])
+    """
+    bottle/
+    cable/
+    capsule/
+    carpet/
+    grid/
+    hazelnut/
+    leather/
+    metal_nut/
+    pill/
+    screw/
+    tile/
+    toothbrush/
+    transistor/
+    wood/
+    zipper/
+    """
+
+    if args.item:
+        item = args.item
+        ################## Train ##################
+        train = datasets[item]["train"]
+        val = datasets[item]['test']
+    else:
+        item = 'all'
+        trains = [datasets[k]["train"] for k in datasets]
+        tests = [datasets[k]["test"] for k in datasets]
+        train = ConcatDataset(datasets=trains)
+        val = ConcatDataset(datasets=tests)
     train_loader = DataLoader(train, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True)
     val_loader = DataLoader(val, batch_size=batch_size, shuffle=False, num_workers=8, pin_memory=True, drop_last=True)
-    log_dir = f"runs/" + datetime.now().isoformat()
+    log_dir = f"runs/"+item+"/" + datetime.now().isoformat()
     writer = SummaryWriter(log_dir=log_dir)
-    
     
     train_approach(net=net,
                    train_loader=train_loader, 
@@ -161,3 +205,4 @@ if __name__ == '__main__':
                    normalized=False,
                    log_dir=log_dir
                    )
+    # python src/trains/train_unet.py --item bottle -e 1

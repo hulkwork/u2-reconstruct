@@ -28,7 +28,11 @@ def eval_net(net, loader, device,criterion : torch.nn.Module, epoch : int, dir_ 
     with tqdm(total=n_val, desc='Validation round', unit='batch', leave=False) as pbar:
         i = 0
         for batch in loader:
-            imgs, true_masks = batch['image'], batch['output']
+            imgs, true_masks, noisy = batch['image'], batch['output'], batch['noisy']
+            masked = batch['masked']
+            if imgs.shape[1] != net.n_channels:
+                    logging.info(imgs.shape[1])
+                    continue
             imgs = imgs.to(device=device, dtype=torch.float32)
             true_masks = true_masks.to(device=device, dtype=mask_type)
 
@@ -39,7 +43,9 @@ def eval_net(net, loader, device,criterion : torch.nn.Module, epoch : int, dir_ 
 
             gt_image = scale_to_image(imgs, normalize=normalize)
             pred = scale_to_image(mask_pred, normalize=normalize)
-            im_v = cv2.hconcat([gt_image, pred])
+            noisies = scale_to_image(noisy, normalize = normalize)
+            masked = scale_to_image(masked, normalize= normalize)
+            im_v = cv2.hconcat([gt_image, pred,masked, noisies])
             cv2.imwrite(os.path.join(dir_, str(epoch)+"_"+ str(i) + ".png"), im_v)
             i += 1
             
