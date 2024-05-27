@@ -1,26 +1,24 @@
 import argparse
 import logging
 import os
-from glob import glob
+from typing import Dict
 
 ########## Torch packages ##########
 import torch
 import torch.nn as nn
 from torch import optim
 from torch.nn import MSELoss
-from torch.utils.data import ConcatDataset, DataLoader
+from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 ########## Torch packages ##########
 from tqdm import tqdm
 
-from src.dataset import FilesDataset
+from src.datasets.mvtec import load_mvtec_dataset
 from src.eval import eval_net
 from src.losses.focal import FocalFrequencyLoss
 from src.losses.losses import CustomLoss, SSIM_Loss
 from src.model import UNet
-
-dir_checkpoint = "checkpoints/"
 
 criterion1 = SSIM_Loss(
     data_range=1.0, channel=3, size_average=False, nonnegative_ssim=True
@@ -35,6 +33,7 @@ def train_approach(
     net: UNet,
     train_loader: DataLoader,
     validation_loader: DataLoader,
+    anbnormal_loader: Dict[str, DataLoader],
     writer: SummaryWriter,
     device: torch.device,
     intput_key: str = "noised",
@@ -117,14 +116,27 @@ def train_approach(
             device,
             criterion=criterion,
             epoch=epoch,
-            dir_=os.path.join(log_dir, "eval", str(epoch)),
+            dir_=os.path.join(log_dir, "eval/good", str(epoch)),
             normalize=normalized,
         )
+
         scheduler.step(val_score)
         writer.add_scalar("learning_rate", optimizer.param_groups[0]["lr"], global_step)
         logging.info("Validation SSIM loss: {}".format(val_score))
         writer.add_scalar("Loss/test", val_score, global_step)
         writer.add_images("images", imgs, global_step)
+        for status in anbnormal_loader:
+
+            abn_score = eval_net(
+                net,
+                anbnormal_loader[status],
+                device,
+                criterion=criterion,
+                epoch=epoch,
+                dir_=os.path.join(log_dir, f"eval/{status}", str(epoch)),
+                normalize=normalized,
+            )
+            logging.info(f"Loss on abnormal data {item}/{status} : {abn_score}")
 
         if latest_val_score > val_score:
             latest_val_score = val_score
@@ -185,32 +197,6 @@ def get_args():
     return parser.parse_args()
 
 
-def dataset_creator_good(
-    data_path="./data/", resized: int = 256, normalized: bool = False
-):
-    all_items = os.listdir(data_path)
-    test_path = "test"
-    train_path = "train"
-    datasets = dict()
-    for item in all_items:
-        train_data = os.path.join(data_path, item, train_path, "good")
-        test_data = os.path.join(data_path, item, test_path, "good")
-        datasets[item] = dict(
-            train=FilesDataset(
-                imgs_files=glob(train_data + "/*.png"),
-                resize=resized,
-                normalized=normalized,
-            ),
-            test=FilesDataset(
-                imgs_files=glob(test_data + "/*.png"),
-                resize=resized,
-                normalized=normalized,
-            ),
-        )
-
-    return datasets
-
-
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     args = get_args()
@@ -229,38 +215,19 @@ if __name__ == "__main__":
         logging.info(f"Model loaded from {args.load}")
 
     net.to(device=device)
-    datasets = dataset_creator_good()
+    datasets, abnormal_items, gt_defect = load_mvtec_dataset()
     batch_size = 1
     val_percent = 0.1
-    """
-    bottle/
-    cable/
-    capsule/
-    carpet/
-    grid/
-    hazelnut/
-    leather/
-    metal_nut/
-    pill/
-    screw/
-    tile/
-    toothbrush/
-    transistor/
-    wood/
-    zipper/
-    """
 
-    if args.item:
+    if args.item in datasets:
         item = args.item
         ################## Train ##################
         train = datasets[item]["train"]
         val = datasets[item]["test"]
+        abnormal_item = abnormal_items[item]
     else:
-        item = "all"
-        trains = [datasets[k]["train"] for k in datasets]
-        tests = [datasets[k]["test"] for k in datasets]
-        train = ConcatDataset(datasets=trains)
-        val = ConcatDataset(datasets=tests)
+        raise FileNotFoundError(f"{args.item} not Found in ({datasets.keys()})")
+
     train_loader = DataLoader(
         train, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True
     )
@@ -272,6 +239,17 @@ if __name__ == "__main__":
         pin_memory=True,
         drop_last=True,
     )
+    abn_loader: Dict[str, DataLoader] = {
+        k: DataLoader(
+            abnormal_item[k],
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=8,
+            pin_memory=True,
+            drop_last=True,
+        )
+        for k in abnormal_item
+    }
     log_dir = os.path.join("runs", item)
     writer = SummaryWriter(log_dir=log_dir)
 
@@ -279,6 +257,7 @@ if __name__ == "__main__":
         net=net,
         train_loader=train_loader,
         validation_loader=val_loader,
+        anbnormal_loader=abn_loader,
         epochs=args.epochs,
         batch_size=args.batchsize,
         writer=writer,
