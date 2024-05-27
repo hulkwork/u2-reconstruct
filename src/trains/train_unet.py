@@ -8,18 +8,23 @@ import torch.nn as nn
 from torch import optim
 from tqdm import tqdm
 import sys 
-sys.path.insert(0, "/home/michou/mvtec/u2-reconstruct")
+import os 
+try:
+    import src
+except:
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    sys.path.insert(0, os.path.join(dir_path, '../../'))
 
 from src.model import UNet
 from datetime import datetime
 from glob import glob
 from torch.utils.tensorboard import SummaryWriter
 from torch.nn import MSELoss
-from src.dataset import ReconstructDataset, FilesDataset
+from src.dataset import FilesDataset
 from torch.utils.data import ConcatDataset
-from src.losses import SSIM_Loss, CustomLoss
+from src.losses.losses import SSIM_Loss, CustomLoss
 from src.eval import eval_net
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 
 
 dir_checkpoint = 'checkpoints/'
@@ -62,7 +67,7 @@ def train_approach(net:UNet, train_loader : DataLoader,
         epoch_loss = 0
         with tqdm(total=n_train, desc=f'Epoch {epoch + 1}/{epochs}', unit='img') as pbar:
             for batch in train_loader:
-                imgs = batch['noisy']
+                imgs = batch['noise']
                 true_masks = batch['output']
                 if imgs.shape[1] != net.n_channels:
                     logging.info(imgs.shape[1])
@@ -124,7 +129,7 @@ def get_args():
 
     return parser.parse_args()
 
-def dataset_creator_good(data_path="/home/michou/mvtec/data/",resized:int=256, normalized : bool = False):
+def dataset_creator_good(data_path="./data/",resized:int=256, normalized : bool = False):
     all_items = os.listdir(data_path)
     test_path = "test"
     train_path = 'train'
@@ -191,7 +196,7 @@ if __name__ == '__main__':
         val = ConcatDataset(datasets=tests)
     train_loader = DataLoader(train, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True)
     val_loader = DataLoader(val, batch_size=batch_size, shuffle=False, num_workers=8, pin_memory=True, drop_last=True)
-    log_dir = f"runs/"+item+"/" + datetime.now().isoformat()
+    log_dir = f"runs/"+item+"/"
     writer = SummaryWriter(log_dir=log_dir)
     
     train_approach(net=net,

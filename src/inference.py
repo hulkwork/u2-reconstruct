@@ -7,14 +7,15 @@ import torch
 from tqdm import tqdm
 import sys 
 import cv2
-sys.path.insert(0, "/home/michou/mvtec/u2-reconstruct")
+from torch.utils.data import DataLoader
+from torch.nn import MSELoss
+
+dir_path = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, os.path.join(dir_path, '../'))
 
 from src.model import UNet
-from glob import glob 
-from torch.nn import MSELoss
-from src.losses import SSIM_Loss, CustomLoss
+from src.losses.losses import SSIM_Loss, CustomLoss
 from src.eval import scale_to_image
-from torch.utils.data import DataLoader
 from src.dataset import FilesDataset
 
 

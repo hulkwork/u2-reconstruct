@@ -1,6 +1,5 @@
 from typing import List
-from pytorch_msssim import MS_SSIM, ms_ssim, SSIM, ssim
-import torch
+from src.losses.ssim import MS_SSIM, SSIM
 from torch import nn
 
 class SSIM_Loss(SSIM):

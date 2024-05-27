@@ -28,7 +28,7 @@ def eval_net(net, loader, device,criterion : torch.nn.Module, epoch : int, dir_ 
     with tqdm(total=n_val, desc='Validation round', unit='batch', leave=False) as pbar:
         i = 0
         for batch in loader:
-            imgs, true_masks, noisy = batch['image'], batch['output'], batch['noisy']
+            imgs, true_masks, noisy = batch['image'], batch['output'], batch['noise']
             masked = batch['masked']
             if imgs.shape[1] != net.n_channels:
                     logging.info(imgs.shape[1])
