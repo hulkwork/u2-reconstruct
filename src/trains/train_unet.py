@@ -16,6 +16,7 @@ from tqdm import tqdm
 
 from src.dataset import FilesDataset
 from src.eval import eval_net
+from src.losses.focal import FocalFrequencyLoss
 from src.losses.losses import CustomLoss, SSIM_Loss
 from src.model import UNet
 
@@ -24,7 +25,10 @@ dir_checkpoint = "checkpoints/"
 criterion1 = SSIM_Loss(
     data_range=1.0, channel=3, size_average=False, nonnegative_ssim=True
 )
-criterion = CustomLoss(losses=[criterion1, MSELoss()], weights=[0.9, 0.01])
+criterion2 = FocalFrequencyLoss()
+criterion = CustomLoss(
+    losses=[criterion1, MSELoss(), criterion2], weights=[0.9, 0.9, 0.9]
+)
 
 
 def train_approach(
@@ -33,6 +37,7 @@ def train_approach(
     validation_loader: DataLoader,
     writer: SummaryWriter,
     device: torch.device,
+    intput_key: str = "noised",
     epochs: int = 10,
     batch_size: int = 1,
     lr: float = 0.001,
@@ -45,6 +50,8 @@ def train_approach(
     trainable_params = sum(p.numel() for p in net.parameters() if p.requires_grad)
     n_train = len(train_loader)
     n_val = len(validation_loader)
+    latest_val_score = float("Inf")
+    models_dir = os.path.join(log_dir, "models")
 
     logging.info(
         f"""Starting training:
@@ -60,8 +67,11 @@ def train_approach(
     """
     )
 
+    os.makedirs(models_dir, exist_ok=True)
+
     optimizer = optim.RMSprop(net.parameters(), lr=lr, weight_decay=1e-8, momentum=0.9)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", patience=2)
+
     global_step = 0
     for epoch in range(epochs):
         net.train()
@@ -71,7 +81,7 @@ def train_approach(
             total=n_train, desc=f"Epoch {epoch + 1}/{epochs}", unit="img"
         ) as pbar:
             for batch in train_loader:
-                imgs = batch["noise"]
+                imgs = batch[intput_key]
                 true_masks = batch["output"]
                 if imgs.shape[1] != net.n_channels:
                     logging.info(imgs.shape[1])
@@ -107,19 +117,20 @@ def train_approach(
             device,
             criterion=criterion,
             epoch=epoch,
-            dir_=log_dir + "/" + str(epoch),
+            dir_=os.path.join(log_dir, "eval", str(epoch)),
             normalize=normalized,
         )
         scheduler.step(val_score)
         writer.add_scalar("learning_rate", optimizer.param_groups[0]["lr"], global_step)
-
         logging.info("Validation SSIM loss: {}".format(val_score))
         writer.add_scalar("Loss/test", val_score, global_step)
         writer.add_images("images", imgs, global_step)
 
-        path_checkpoint = os.path.join(log_dir, f"model_epoch{epoch + 1}.pth")
-        torch.save(net.state_dict(), path_checkpoint)
-        logging.info(f"Checkpoint {epoch + 1} saved !")
+        if latest_val_score > val_score:
+            latest_val_score = val_score
+            path_checkpoint = os.path.join(models_dir, f"model_epoch_{item}.pth")
+            torch.save(net.state_dict(), path_checkpoint)
+            logging.info(f"Checkpoint {epoch + 1} saved !")
 
     writer.close()
 
@@ -154,7 +165,7 @@ def get_args():
         metavar="LR",
         type=float,
         nargs="?",
-        default=0.1,
+        default=0.01,
         help="Learning rate",
         dest="lr",
     )
