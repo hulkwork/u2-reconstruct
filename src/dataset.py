@@ -23,14 +23,16 @@ class AddGaussianNoise(object):
         )
 
 
-def mask_image(img, n):
+def mask_image(img, n: int, x: int = None, y: int = None):
 
     width, height = img.size
 
     square_size = min(width, height) // n
 
-    x = random.randint(0, width - square_size)
-    y = random.randint(0, height - square_size)
+    if x is None:
+        x = random.randint(0, width - square_size)
+    if y is None:
+        y = random.randint(0, height - square_size)
 
     masked_img = img.copy()
     draw = ImageDraw.Draw(masked_img)
