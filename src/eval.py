@@ -6,6 +6,8 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
+from src.utils import diff_image
+
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 
@@ -54,7 +56,8 @@ def eval_net(
             pred = scale_to_image(mask_pred, normalize=normalize)
             noisies = scale_to_image(noisy, normalize=normalize)
             masked = scale_to_image(masked, normalize=normalize)
-            im_v = cv2.hconcat([gt_image, pred, masked, noisies])
+            dif_pred_gt = diff_image(gt_image, pred)
+            im_v = cv2.hconcat([gt_image, pred, dif_pred_gt, masked, noisies])
             cv2.imwrite(os.path.join(dir_, str(epoch) + "_" + str(i) + ".png"), im_v)
             i += 1
 
