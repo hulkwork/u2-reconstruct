@@ -1,8 +1,8 @@
 """ Full assembly of the parts to form the complete network """
 
-import torch.nn.functional as F
 from torch import nn
-from src.layer import DoubleConv, Down, Up, OutConv
+
+from src.layer import DoubleConv, Down, OutConv, Up
 
 
 class UNet(nn.Module):

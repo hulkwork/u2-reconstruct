@@ -8,7 +8,9 @@ We try to learn how to reconstruct images by using unet model.
 
 ## Test codes
 
+
 ```bash
+export PYTHONPATH="${PYTHONPATH}:${PWD}"
 python3 -m unittest discover
 ```
 

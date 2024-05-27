@@ -1,16 +1,16 @@
+import logging
+import os
+import random
 from typing import List
 
-import os
-from glob import glob
 import numpy as np
 import torch
-from torch.utils.data import Dataset
-import logging
 from PIL import Image, ImageDraw
-import random
+from torch.utils.data import Dataset
+
 
 class AddGaussianNoise(object):
-    def __init__(self, mean=0., std=1.):
+    def __init__(self, mean=0.0, std=1.0):
         self.std = std
         self.mean = mean
 
@@ -18,8 +18,9 @@ class AddGaussianNoise(object):
         return torch.randn(tensor.size()) * self.std + self.mean
 
     def __repr__(self):
-        return self.__class__.__name__ + '(mean={0}, std={1})'.format(self.mean, self.std)
-
+        return self.__class__.__name__ + "(mean={0}, std={1})".format(
+            self.mean, self.std
+        )
 
 
 def mask_image(img, n):
@@ -37,18 +38,21 @@ def mask_image(img, n):
 
     return masked_img
 
+
 class FilesDataset(Dataset):
-    def __init__(self, imgs_files : List[str], resize : int=256, normalized : bool = True):
+    def __init__(
+        self, imgs_files: List[str], resize: int = 256, normalized: bool = True
+    ):
         self.resize = resize
         self.normalize = normalized
         self.ids = imgs_files
-        logging.info(f'Creating dataset with {len(self.ids)} examples')
+        logging.info(f"Creating dataset with {len(self.ids)} examples")
 
     def __len__(self):
         return len(self.ids)
 
     @classmethod
-    def preprocess(cls, pil_img, new_size, normalize : bool = True):
+    def preprocess(cls, pil_img, new_size, normalize: bool = True):
         newW, newH = new_size, new_size
         pil_img = pil_img.resize((newW, newH))
 
@@ -66,21 +70,21 @@ class FilesDataset(Dataset):
     def __getitem__(self, i):
         img_file = self.ids[i]
 
-        assert os.path.exists(img_file), \
-            f'Either no image found for {img_file}'
+        assert os.path.exists(img_file), f"Either no image found for {img_file}"
         img = Image.open(img_file)
-        img_masked = mask_image(img,n=2)
-
+        img_masked = mask_image(img, n=2)
 
         img = self.preprocess(img, self.resize, normalize=self.normalize)
         img_masked = self.preprocess(img_masked, self.resize, normalize=self.normalize)
         if self.normalize:
             std = 1.0
         else:
-            std = 225.
-        img_noise = AddGaussianNoise(mean=0., std=std)(torch.from_numpy(img))
-        return {'image': torch.from_numpy(img),
-                "masked" : torch.from_numpy(img_masked),
-                'output': torch.from_numpy(img),
-                "noise" : img_noise, 
-                "noised" : img_noise + torch.from_numpy(img_masked)}
+            std = 225.0
+        img_noise = AddGaussianNoise(mean=0.0, std=std)(torch.from_numpy(img))
+        return {
+            "image": torch.from_numpy(img),
+            "masked": torch.from_numpy(img_masked),
+            "output": torch.from_numpy(img),
+            "noise": img_noise,
+            "noised": img_noise + torch.from_numpy(img_masked),
+        }
