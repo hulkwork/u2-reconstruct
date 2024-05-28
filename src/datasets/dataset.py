@@ -1,7 +1,7 @@
 import logging
 import os
 import random
-from typing import List
+from typing import Dict, List
 
 import numpy as np
 import torch
@@ -23,32 +23,38 @@ class AddGaussianNoise(object):
         )
 
 
-def mask_image(img, n: int, x: int = None, y: int = None):
+def mask_image(img, n_x: int, n_y: int, x: int = None, y: int = None):
 
     width, height = img.size
 
-    square_size = min(width, height) // n
+    square_size_x = width // n_x
+    square_size_y = height // n_y
 
     if x is None:
-        x = random.randint(0, width - square_size)
+        x = random.randint(0, width - square_size_x)
     if y is None:
-        y = random.randint(0, height - square_size)
+        y = random.randint(0, height - square_size_y)
 
     masked_img = img.copy()
     draw = ImageDraw.Draw(masked_img)
-    draw.rectangle([x, y, x + square_size, y + square_size], fill="black")
+    draw.rectangle([x, y, x + square_size_x, y + square_size_y], fill="black")
 
     return masked_img
 
 
 class FilesDataset(Dataset):
     def __init__(
-        self, imgs_files: List[str], resize: int = 256, normalized: bool = True
+        self,
+        imgs_files: List[str],
+        resize: int = 256,
+        normalized: bool = True,
+        metadata: Dict[str, str] = None,
     ):
         self.resize = resize
         self.normalize = normalized
         self.ids = imgs_files
         logging.info(f"Creating dataset with {len(self.ids)} examples")
+        self.metadata = metadata
 
     def __len__(self):
         return len(self.ids)
@@ -74,7 +80,7 @@ class FilesDataset(Dataset):
 
         assert os.path.exists(img_file), f"Either no image found for {img_file}"
         img = Image.open(img_file)
-        img_masked = mask_image(img, n=2)
+        img_masked = mask_image(img, n_x=2, n_y=1, x=0, y=0)
 
         img = self.preprocess(img, self.resize, normalize=self.normalize)
         img_masked = self.preprocess(img_masked, self.resize, normalize=self.normalize)
@@ -83,10 +89,15 @@ class FilesDataset(Dataset):
         else:
             std = 225.0
         img_noise = AddGaussianNoise(mean=0.0, std=std)(torch.from_numpy(img))
-        return {
+        result = {
             "image": torch.from_numpy(img),
             "masked": torch.from_numpy(img_masked),
             "output": torch.from_numpy(img),
             "noise": img_noise,
             "noised": img_noise + torch.from_numpy(img_masked),
+            "file_path": img_file,
+            "id": i,
         }
+        if self.metadata is not None:
+            result.update(self.metadata)
+        return result

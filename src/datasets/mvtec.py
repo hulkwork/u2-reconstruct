@@ -1,8 +1,37 @@
 import os
 from glob import glob
-from typing import Dict, Tuple
+from typing import Dict, List, Tuple
+
+from PIL import Image
 
 from src.datasets.dataset import FilesDataset
+
+
+class AbnormalDataset(FilesDataset):
+    def __init__(
+        self,
+        imgs_files: List[str],
+        gt_path: str,
+        resize: int = 256,
+        normalized: bool = True,
+        metadata: Dict[str, str] = None,
+    ):
+        super().__init__(imgs_files, resize, normalized, metadata)
+        self.gt_path = gt_path
+
+    def __getitem__(self, i):
+        result = super().__getitem__(i)
+        img_file = self.ids[i]
+        basename = os.path.basename(img_file)
+        filename = f"{os.path.splitext(basename)[0]}_mask.png"
+        gt_img = Image.open(
+            os.path.join(self.gt_path, self.metadata["status"], filename)
+        )
+        result["gt"] = self.preprocess(
+            gt_img, new_size=self.resize, normalize=self.normalize
+        )
+
+        return result
 
 
 def load_mvtec_dataset(
@@ -28,11 +57,13 @@ def load_mvtec_dataset(
                 imgs_files=glob(train_data + "/*.png"),
                 resize=resized,
                 normalized=normalized,
+                metadata={"item": item},
             ),
             test=FilesDataset(
                 imgs_files=glob(test_data + "/*.png"),
                 resize=resized,
                 normalized=normalized,
+                metadata={"item": item},
             ),
         )
         item_abnormal[item] = {}
@@ -44,15 +75,18 @@ def load_mvtec_dataset(
         )
         for status in desc_item_status:
             path = os.path.join(desc_item_status_path, status, "*.png")
-            item_abnormal[item][status] = FilesDataset(
+            item_abnormal[item][status] = AbnormalDataset(
                 imgs_files=glob(path),
                 resize=resized,
                 normalized=normalized,
+                metadata={"status": status, "item": item},
+                gt_path=gt_item_status_path,
             )
             gt_defect[item][status] = FilesDataset(
                 imgs_files=glob(os.path.join(gt_item_status_path, status, "*.png")),
                 resize=resized,
                 normalized=normalized,
+                metadata={"status": status, "item": item},
             )
 
     return datasets, item_abnormal, gt_defect
