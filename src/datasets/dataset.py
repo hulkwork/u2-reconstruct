@@ -22,6 +22,11 @@ class AddGaussianNoise(object):
             self.mean, self.std
         )
 
+def rotate_pil_imgage(pil_img:Image.Image, rotations : List[int] = None) -> List[Image.Image]:
+    if rotations is None:
+        return [pil_img]
+    return [pil_img.rotate(angle) for angle in rotations]
+
 
 def mask_image(img, n_x: int, n_y: int, x: int = None, y: int = None):
 
@@ -41,6 +46,13 @@ def mask_image(img, n_x: int, n_y: int, x: int = None, y: int = None):
 
     return masked_img
 
+def get_subgrid_coords(n, m, p, q):
+    coords = []
+    for i in range(0, n, p):
+        for j in range(0, m, q):
+            top_left = (i, j)
+            coords.append(top_left)
+    return coords
 
 class FilesDataset(Dataset):
     def __init__(
@@ -49,12 +61,31 @@ class FilesDataset(Dataset):
         resize: int = 256,
         normalized: bool = True,
         metadata: Dict[str, str] = None,
+        is_transfo :bool = False
     ):
         self.resize = resize
         self.normalize = normalized
-        self.ids = imgs_files
+        self.ids = []
         logging.info(f"Creating dataset with {len(self.ids)} examples")
         self.metadata = metadata
+        self.masker = get_subgrid_coords(n=resize, m=resize, p = resize // 2, q=resize //2)
+        self.transfo = []
+        self.is_transfo = is_transfo
+        if is_transfo:
+            for item in imgs_files:
+                for maske in self.masker:
+                    self.transfo.append(maske)
+                    self.ids.append(item)
+        else:
+            self.ids = imgs_files
+
+
+    def transformations(self, i:int):
+        img_file = self.ids[i]
+        x,y = self.transfo[i]
+        img = Image.open(img_file)
+        img = img.resize((self.resize, self.resize))
+        return mask_image(img, n_x=2, n_y=2, x=x,y=y)
 
     def __len__(self):
         return len(self.ids)
@@ -76,28 +107,32 @@ class FilesDataset(Dataset):
         return img_trans
 
     def __getitem__(self, i):
+        result = {}
         img_file = self.ids[i]
 
         assert os.path.exists(img_file), f"Either no image found for {img_file}"
         img = Image.open(img_file)
-        img_masked = mask_image(img, n_x=2, n_y=1, x=0, y=0)
-
-        img = self.preprocess(img, self.resize, normalize=self.normalize)
-        img_masked = self.preprocess(img_masked, self.resize, normalize=self.normalize)
         if self.normalize:
             std = 1.0
         else:
             std = 225.0
+        img = self.preprocess(img, self.resize, normalize=self.normalize)
         img_noise = AddGaussianNoise(mean=0.0, std=std)(torch.from_numpy(img))
-        result = {
-            "image": torch.from_numpy(img),
-            "masked": torch.from_numpy(img_masked),
+
+        if self.is_transfo:
+            img_masked = self.transformations(i)
+            img_masked = self.preprocess(img_masked, self.resize, normalize=self.normalize)
+            result["noised"] =  img_noise + torch.from_numpy(img_masked)
+            result["masked"] = torch.from_numpy(img_masked)
+
+        result.update(
+            {"image": torch.from_numpy(img),
             "output": torch.from_numpy(img),
             "noise": img_noise,
-            "noised": img_noise + torch.from_numpy(img_masked),
             "file_path": img_file,
             "id": i,
-        }
+            }
+        )
         if self.metadata is not None:
             result.update(self.metadata)
         return result

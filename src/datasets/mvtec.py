@@ -58,6 +58,7 @@ def load_mvtec_dataset(
                 resize=resized,
                 normalized=normalized,
                 metadata={"item": item},
+                is_transfo=True
             ),
             test=FilesDataset(
                 imgs_files=glob(test_data + "/*.png"),

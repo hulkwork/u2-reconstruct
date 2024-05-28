@@ -8,7 +8,7 @@ from torch.nn import MSELoss
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.dataset import FilesDataset
+from src.datasets.dataset import FilesDataset
 from src.eval import scale_to_image
 from src.losses.losses import CustomLoss, SSIM_Loss
 from src.model import UNet
@@ -43,7 +43,6 @@ def infer(
         data_range=1.0, channel=3, size_average=False, nonnegative_ssim=True
     )
     criterion = CustomLoss(losses=[criterion1, MSELoss()], weights=[0.9, 0.01])
-    global_step = 0
     net.eval()
 
     with tqdm(total=n_train, desc="Inference", unit="img") as pbar:

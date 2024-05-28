@@ -79,11 +79,29 @@ if __name__ == "__main__":
         f"\t{net.n_classes} output channels (classes)\n"
         f'\t{"Bilinear" if net.bilinear else "Transposed conv"} upscaling'
     )
-    criterion1 = SSIM_Loss(
-    data_range=1.0, channel=3, size_average=False, nonnegative_ssim=True)
-    criterion2 = FocalFrequencyLoss()
+
+    losses = {
+        "ssim" : {
+            "loss" : SSIM_Loss(data_range=255.0, channel=3, size_average=False, nonnegative_ssim=True),
+            "weight" : 0.9
+
+        },
+        "focal" : {
+            "loss" : FocalFrequencyLoss(),
+            "weight" : 0.9
+
+        },
+        "mse" : {
+            "loss" : MSELoss(),
+            "weight" : 0.9
+
+        },
+
+    }
+
+    loss_choice = 'focal'
     criterion = CustomLoss(
-        losses=[criterion1, MSELoss(), criterion2], weights=[0.9, 0.9, 0.9]
+        losses=[losses[loss_choice]['loss']], weights=[losses[loss_choice]['weight']]
     )
 
 
@@ -127,7 +145,7 @@ if __name__ == "__main__":
         )
         for k in abnormal_item
     }
-    log_dir = os.path.join("runs", item)
+    log_dir = os.path.join("runs", item, loss_choice)
     writer = SummaryWriter(log_dir=log_dir)
 
     train_approach(
@@ -135,6 +153,7 @@ if __name__ == "__main__":
         train_loader=train_loader,
         validation_loader=val_loader,
         anbnormal_loader=abn_loader,
+        intput_key="noised",
         epochs=args.epochs,
         batch_size=args.batchsize,
         writer=writer,
