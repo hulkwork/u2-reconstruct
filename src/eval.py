@@ -39,8 +39,7 @@ def eval_net(
     with tqdm(total=n_val, desc="Validation round", unit="batch", leave=False) as pbar:
         i = 0
         for batch in loader:
-            imgs, true_masks, noisy = batch["image"], batch["output"], batch["noise"]
-            masked = batch["masked"]
+            imgs, true_masks = batch["image"], batch["output"]
             if imgs.shape[1] != net.n_channels:
                 logging.info(imgs.shape[1])
                 continue
@@ -54,10 +53,8 @@ def eval_net(
 
             gt_image = scale_to_image(imgs, normalize=normalize)
             pred = scale_to_image(mask_pred, normalize=normalize)
-            noisies = scale_to_image(noisy, normalize=normalize)
-            masked = scale_to_image(masked, normalize=normalize)
             dif_pred_gt = diff_image(gt_image, pred)
-            images = [gt_image, pred, dif_pred_gt, masked, noisies]
+            images = [gt_image, pred, dif_pred_gt]
             if "gt" in batch:
                 gt_img_broke = batch["gt"]
                 gt_img_broke = gt_img_broke.expand(3, *gt_img_broke.shape[1:])
