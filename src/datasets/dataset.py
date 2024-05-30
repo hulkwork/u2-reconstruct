@@ -74,16 +74,18 @@ class FilesDataset(Dataset):
         if is_transfo:
             for item in imgs_files:
                 for maske in self.masker:
-                    self.transfo.append(maske)
-                    self.ids.append(item)
+                    for rot in [0, 30, 90]:
+                        self.transfo.append((maske, rot))
+                        self.ids.append(item)
         else:
             self.ids = imgs_files
 
 
     def transformations(self, i:int):
         img_file = self.ids[i]
-        x,y = self.transfo[i]
+        (x,y), angle = self.transfo[i]
         img = Image.open(img_file)
+        img = img.rotate(angle)
         img = img.resize((self.resize, self.resize))
         return mask_image(img, n_x=2, n_y=2, x=x,y=y)
 
